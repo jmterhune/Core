@@ -1,0 +1,54 @@
+trigger:
+  branches:
+    include:
+    - master
+    - Sai
+    - develop
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+- job: UbuntuBuild
+  pool:
+    vmImage: ubuntu-latest
+  steps:
+  - script: |
+      sudo update-alternatives --set php /usr/bin/php$(phpVersion)
+      sudo update-alternatives --set phar /usr/bin/phar$(phpVersion)
+      sudo update-alternatives --set phpdbg /usr/bin/phpdbg$(phpVersion)
+      sudo update-alternatives --set php-cgi /usr/bin/php-cgi$(phpVersion)
+      sudo update-alternatives --set phar.phar /usr/bin/phar.phar$(phpVersion)
+      php -version
+    displayName: 'Use PHP version $(phpVersion)'
+  - script: composer install --no-interaction --prefer-dist
+    displayName: 'composer install'
+
+- job: WindowsBuild
+  pool:
+    vmImage: windows-latest
+  steps:
+  - script: |
+      choco install php --version $(phpVersion) -y
+      php -version
+    displayName: 'Use PHP version $(phpVersion)'
+  - script: composer install --no-interaction --prefer-dist
+    displayName: 'composer install'
+
+- job: Deploy
+  dependsOn: [UbuntuBuild, WindowsBuild]
+  pool:
+    vmImage: ubuntu-latest
+  steps:
+  - script: php artisan migrate
+    displayName: 'Run database migrations'
+  - script: php artisan config:cache
+    displayName: 'Cache configuration'
+  - script: php artisan route:cache
+    displayName: 'Cache routes'
+  - script: php artisan queue:restart
+    displayName: 'Restart queue worker'
+  - script: php artisan optimize
+    displayName: 'Optimize application'
+  - script: php artisan deploy --all-servers
+    displayName: 'Deploy code to all servers'
